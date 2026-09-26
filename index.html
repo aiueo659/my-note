@@ -10,24 +10,24 @@ button,input{font:inherit}.top{height:58px;background:#fff;border-bottom:1px sol
 #note{display:none}.pagebar{display:flex;gap:7px;overflow:auto;padding:9px;background:#fff;border-bottom:1px solid #ddd}.page{min-width:48px;height:38px;border:1px solid #ccc;border-radius:8px;background:#fff}.page.sel{background:#222;color:#fff}
 .toolbar{display:flex;gap:6px;overflow:auto;padding:8px;background:#fff;border-bottom:1px solid #ddd}.tool{white-space:nowrap}.tool.active{background:#222;color:#fff}
 #sheetWrap{padding:16px;display:flex;justify-content:center;min-height:calc(100vh - 160px)}#sheet{position:relative;width:min(100%,760px);aspect-ratio:1/1.414;background:#fff;box-shadow:0 2px 10px #0002;overflow:hidden;touch-action:none}
-#draw{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.text{position:absolute;min-width:100px;min-height:34px;border:1px dashed #999;background:#ffffffe8;padding:6px;outline:0;font-size:18px;line-height:1.5;white-space:pre-wrap;resize:both;overflow:auto;touch-action:none}.text:focus{border:2px solid #555}.textwrap{position:absolute}.pic{position:absolute;max-width:80%;max-height:70%;touch-action:none;user-select:none}
+#draw{position:absolute;inset:0;width:100%;height:100%;touch-action:none}.text{position:absolute;min-width:30px;min-height:28px;border:0;background:transparent;padding:2px;outline:0;font-size:18px;line-height:1.5;white-space:pre-wrap;resize:none;overflow:visible;touch-action:auto}.text:focus{border:1px solid #888;outline:none}.text.moving{border:1px solid #888;outline:none}.textwrap{position:absolute}.picwrap{position:absolute;touch-action:none;user-select:none;display:block;border:1px solid transparent}.picwrap.active{border:1px solid #777}.picwrap .resize-handle,.picwrap .delete-img{display:none}.picwrap.active .resize-handle,.picwrap.active .delete-img{display:block}.picwrap img{display:block;width:100%;height:100%;object-fit:contain;touch-action:none;user-select:none}.resize-handle{position:absolute;width:14px;height:14px;background:#fff;border:1px solid #555;border-radius:3px}.resize-handle.nw{left:-7px;top:-7px;cursor:nwse-resize}.resize-handle.ne{right:-7px;top:-7px;cursor:nesw-resize}.resize-handle.sw{left:-7px;bottom:-7px;cursor:nesw-resize}.resize-handle.se{right:-7px;bottom:-7px;cursor:nwse-resize}.delete-img{position:absolute;right:-12px;top:-34px;border:0;border-radius:8px;background:#222;color:#fff;width:28px;height:28px;font-size:18px;line-height:28px;padding:0;cursor:pointer}
 #file{display:none}.hint{padding:18px;color:#777;text-align:center}
 </style></head><body>
 <section id="home"><header class="top"><h1>📓 My Note</h1></header><main id="books"></main><button class="fab" onclick="newBook()">＋</button></section>
 <section id="note"><header class="top"><button class="btn" onclick="home()">←</button><h1 id="bookTitle"></h1><button class="btn" onclick="renameBook()">名前</button></header>
 <div class="pagebar" id="pages"></div>
 <div class="toolbar">
-<button class="btn tool active" id="pen" onclick="mode('pen')">✏️ ペン</button>
-<button class="btn tool" onclick="mode('high')">🖍️ 蛍光</button>
-<button class="btn tool" onclick="mode('erase')">🧹 消しゴム</button>
-<button class="btn tool" onclick="addText()">T 文字</button><button class="btn tool" onclick="fontSize(-2)">A−</button><button class="btn tool" onclick="fontSize(2)">A＋</button>
+<button class="btn tool" id="textMode" onclick="startTextMode()">テキストボックス</button>
+<button class="btn tool" onclick="fontSize(-2)">A−</button><button class="btn tool" onclick="fontSize(2)">A＋</button><button class="btn tool" onclick="fontColorRed()">赤</button>
 <button class="btn tool" onclick="pickImage()">🖼️ 画像</button>
-<button class="btn tool" onclick="undo()">↩️</button><button class="btn tool" onclick="redo()">↪️</button>
+
 <input id="file" type="file" accept="image/*" onchange="addImage(event)">
 </div><div id="sheetWrap"><div id="sheet"><canvas id="draw"></canvas></div></div>
 </section>
 <script>
-const KEY="myNoteBooksV1";let books=JSON.parse(localStorage.getItem(KEY)||"[]"),bi=0,pi=0,tool="pen",drawing=false,last=null,history=[],future=[];
+let savedSelection=null;
+document.addEventListener("selectionchange",()=>{const sel=window.getSelection();if(sel&&sel.rangeCount&&!sel.isCollapsed){const n=sel.anchorNode;const e=n&&(n.nodeType===1?n:n.parentElement);if(e&&e.closest&&e.closest(".text"))savedSelection=sel.getRangeAt(0).cloneRange()}});
+const KEY="myNoteBooksV1";let books=JSON.parse(localStorage.getItem(KEY)||"[]"),bi=0,pi=0,textMode=false;
 function save(){localStorage.setItem(KEY,JSON.stringify(books))}
 function home(){document.getElementById("note").style.display="none";document.getElementById("home").style.display="block";renderBooks()}
 function renderBooks(){let e=document.getElementById("books");e.innerHTML=books.length?books.map((b,i)=>`<div class="book" onclick="openBook(${i})"><b>${esc(b.name)}</b><small>${b.pages.length}ページ</small></div>`).join(""):'<div class="hint">右下の「＋」からノートを作成できます。</div>'}
@@ -39,44 +39,160 @@ function goPage(i){pi=i;renderPages();loadPage()}
 function addPage(){books[bi].pages.push(blank());pi=books[bi].pages.length-1;save();renderPages();loadPage()}
 function renameBook(){let n=prompt("ノート名",books[bi].name);if(n){books[bi].name=n;document.getElementById("bookTitle").textContent=n;save();renderBooks()}}
 function setupCanvas(){let c=document.getElementById("draw"),s=document.getElementById("sheet");c.width=s.clientWidth*2;c.height=s.clientHeight*2;c.style.width=s.clientWidth+"px";c.style.height=s.clientHeight+"px";let x=c.getContext("2d");x.scale(2,2);return x}
-function loadPage(){let s=books[bi].pages[pi],sheet=document.getElementById("sheet");sheet.querySelectorAll(".text,.pic").forEach(x=>x.remove());let c=document.getElementById("draw"),ctx=setupCanvas();ctx.lineCap="round";ctx.lineJoin="round";s.strokes.forEach(a=>{ctx.beginPath();a.points.forEach((p,j)=>j?ctx.lineTo(p.x*c.clientWidth,p.y*c.clientHeight):ctx.moveTo(p.x*c.clientWidth,p.y*c.clientHeight));ctx.strokeStyle=a.color;ctx.lineWidth=a.width;ctx.globalAlpha=a.alpha||1;ctx.stroke()});ctx.globalAlpha=1;s.texts.forEach((t,i)=>{
- let e=document.createElement("div");e.className="text";e.contentEditable=true;e.textContent=t.text;
+function loadPage(){let s=books[bi].pages[pi],sheet=document.getElementById("sheet");sheet.querySelectorAll(".text,.picwrap").forEach(x=>x.remove());let c=document.getElementById("draw"),ctx=setupCanvas();ctx.lineCap="round";ctx.lineJoin="round";s.strokes.forEach(a=>{ctx.beginPath();a.points.forEach((p,j)=>j?ctx.lineTo(p.x*c.clientWidth,p.y*c.clientHeight):ctx.moveTo(p.x*c.clientWidth,p.y*c.clientHeight));ctx.strokeStyle=a.color;ctx.lineWidth=a.width;ctx.globalAlpha=a.alpha||1;ctx.stroke()});ctx.globalAlpha=1;s.texts.forEach((t,i)=>{
+ let e=document.createElement("div");e.className="text";e.contentEditable=true;e.innerHTML=t.html || escHtml(t.text||"");
  e.style.left=t.x*100+"%";e.style.top=t.y*100+"%";e.style.width=t.w*100+"%";
  e.style.fontSize=(t.size||18)+"px";
- e.oninput=()=>{t.text=e.innerText;t.w=e.offsetWidth/sheet.clientWidth;t.h=e.offsetHeight/sheet.clientHeight;save()};
- e.onpointerdown=(ev)=>{if(ev.target!==e)return; ev.stopPropagation(); moveText(e,t,ev)};
- e.addEventListener("blur",()=>{t.text=e.innerText;save()});
+ e.oninput=()=>{syncText(e,t);t.w=e.offsetWidth/sheet.clientWidth;t.h=e.offsetHeight/sheet.clientHeight;save()};
+ e.addEventListener("blur",()=>{syncText(e,t);save()});
+ makeTextDrag(e,t);
  sheet.appendChild(e)
-});s.images.forEach((im,i)=>{let e=document.createElement("img");e.className="pic";e.src=im.src;e.style.left=im.x*100+"%";e.style.top=im.y*100+"%";e.style.width=im.w*100+"%";sheet.appendChild(e);makeDrag(e,im)});history=[];future=[]}
-function mode(m){tool=m;document.querySelectorAll(".tool").forEach(x=>x.classList.remove("active"));event.currentTarget.classList.add("active")}
+});s.images.forEach((im,i)=>{createImageElement(im,i,sheet)});history=[];future=[]}
+function startTextMode(){tool="none";textMode=true;document.querySelectorAll(".tool").forEach(x=>x.classList.remove("active"));document.getElementById("textMode").classList.add("active")}
 function pos(e){let r=draw.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
-draw.addEventListener("pointerdown",e=>{if(tool==="erase")return;drawing=true;last=pos(e);let s=books[bi].pages[pi];s.strokes.push({points:[last],color:tool==="high"?"#ffd400":"#222",width:tool==="high"?18:3,alpha:tool==="high"?.35:1});draw.setPointerCapture(e.pointerId)})
-draw.addEventListener("pointermove",e=>{if(!drawing)return;let p=pos(e),s=books[bi].pages[pi],a=s.strokes.at(-1),ctx=draw.getContext("2d");ctx.beginPath();ctx.moveTo(last.x*draw.clientWidth,last.y*draw.clientHeight);ctx.lineTo(p.x*draw.clientWidth,p.y*draw.clientHeight);ctx.strokeStyle=a.color;ctx.lineWidth=a.width;ctx.globalAlpha=a.alpha;ctx.lineCap="round";ctx.stroke();ctx.globalAlpha=1;a.points.push(p);last=p})
-draw.addEventListener("pointerup",()=>{if(drawing){drawing=false;save()}})
-function addText(){
- let s=books[bi].pages[pi],t={text:"ここに入力",x:.12,y:.12,w:.45,size:18};
- s.texts.push(t);save();loadPage();
- setTimeout(()=>{let es=document.querySelectorAll(".text");let e=es[es.length-1];e.focus();document.execCommand("selectAll",false,null)},30)
+function addText(){startTextMode()}
+
+// ページ上をタップした位置にテキストボックスを作成
+document.getElementById("draw").addEventListener("pointerdown",e=>{
+ if(!textMode)return;
+ e.preventDefault();
+ addTextAt(pos(e));
+});
+function addTextAt(p){
+ let s=books[bi].pages[pi],t={text:"",x:Math.max(0,Math.min(.9,p.x)),y:Math.max(0,Math.min(.95,p.y)),w:.45,size:18};
+ s.texts.push(t);save();loadPage();textMode=false;document.getElementById("textMode").classList.remove("active");
+ setTimeout(()=>{let es=document.querySelectorAll(".text");let e=es[es.length-1];e.focus()},30)
 }
-function fontSize(delta){
- let es=[...document.querySelectorAll(".text")],e=es.find(x=>x===document.activeElement);
- if(!e && es.length)e=es[es.length-1];
- if(!e)return;
- let n=Math.max(10,Math.min(60,parseInt(getComputedStyle(e).fontSize)+delta));
- e.style.fontSize=n+"px";
- let i=es.indexOf(e);books[bi].pages[pi].texts[i].size=n;save();
+function escHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]))}
+function syncText(el,t){t.html=el.innerHTML;t.text=el.innerText}
+function getSelectedTextElement(){
+ let a=window.getSelection();
+ if(!a||a.rangeCount===0||a.isCollapsed)return null;
+ let n=a.anchorNode;
+ let e=n&&n.nodeType===1?n:n&&n.parentElement;
+ return e&&e.closest?e.closest(".text"):null;
 }
-function moveText(el,t,start){
- let sx=start.clientX,sy=start.clientY,ox=t.x,oy=t.y,r=sheet.getBoundingClientRect();
- const mv=e=>{t.x=Math.max(0,Math.min(.9,ox+(e.clientX-sx)/r.width));t.y=Math.max(0,Math.min(.95,oy+(e.clientY-sy)/r.height));el.style.left=t.x*100+"%";el.style.top=t.y*100+"%"};
- const up=()=>{el.releasePointerCapture?.(start.pointerId);el.removeEventListener("pointermove",mv);el.removeEventListener("pointerup",up);save()};
- el.setPointerCapture(start.pointerId);el.addEventListener("pointermove",mv);el.addEventListener("pointerup",up);
+function selectionFontSize(){
+ let sel=window.getSelection();
+ if(!sel||sel.rangeCount===0)return 18;
+ let r=sel.getRangeAt(0).cloneRange();r.collapse(true);
+ let node=r.startContainer;
+ let el=node.nodeType===1?node:node.parentElement;
+ if(!el)return 18;
+ let v=parseFloat(getComputedStyle(el).fontSize);
+ return Number.isFinite(v)?v:18;
+}
+function applySelectionStyle(style){
+ let el=getSelectedTextElement();
+ if(!el)return;
+ let sel=window.getSelection();
+ el.focus();
+ if(savedSelection){sel.removeAllRanges();sel.addRange(savedSelection);}
+ if((!sel||sel.rangeCount===0||sel.isCollapsed) && savedSelection){
+   sel=window.getSelection();sel.removeAllRanges();sel.addRange(savedSelection);
+ }
+ if(!sel||sel.rangeCount===0||sel.isCollapsed)return;
+ let range=sel.getRangeAt(0);
+ let size=selectionFontSize();
+ if(style.fontSize){
+   let n=Math.max(10,Math.min(60,size+style.fontSize));
+   document.execCommand("styleWithCSS",false,true);
+   document.execCommand("fontSize",false,"7");
+   el.querySelectorAll('font[size="7"]').forEach(f=>{let span=document.createElement("span");span.style.fontSize=n+"px";span.innerHTML=f.innerHTML;f.replaceWith(span)});
+ }else if(style.color){
+   document.execCommand("styleWithCSS",false,true);
+   document.execCommand("foreColor",false,style.color);
+ }
+ let i=[...document.querySelectorAll(".text")].indexOf(el);
+ if(i>=0){let t=books[bi].pages[pi].texts[i];syncText(el,t);save()}
+}
+function fontSize(delta){applySelectionStyle({fontSize:delta})}
+function fontColorRed(){applySelectionStyle({color:"#ff0000"})}
+
+function makeTextDrag(el,t){
+ let sx=0,sy=0,ox=0,oy=0,moving=false,down=false,pid=null;
+ el.addEventListener("pointerdown",e=>{
+   if(e.button!==undefined && e.button!==0)return;
+   sx=e.clientX;sy=e.clientY;ox=t.x;oy=t.y;moving=false;down=true;pid=e.pointerId;
+   // pointer captureは使わない。contenteditableの文字選択をブラウザに任せる。
+ });
+ el.addEventListener("pointermove",e=>{
+   if(!down)return;
+
+   // 文字選択が始まったら、移動処理を中止して選択を優先する。
+   const sel=window.getSelection();
+   if(sel && !sel.isCollapsed){
+     let n=sel.anchorNode;
+     let selectedEl=n&&(n.nodeType===1?n:n.parentElement);
+     if(selectedEl && selectedEl.closest && selectedEl.closest(".text")===el){
+       down=false;
+       moving=false;
+       return;
+     }
+   }
+
+   const dx=e.clientX-sx,dy=e.clientY-sy;
+   if(!moving && Math.hypot(dx,dy)<8)return;
+   moving=true;
+   e.preventDefault();
+   el.classList.add("moving");
+   const r=sheet.getBoundingClientRect();
+   t.x=Math.max(0,Math.min(.9,ox+dx/r.width));
+   t.y=Math.max(0,Math.min(.95,oy+dy/r.height));
+   el.style.left=t.x*100+"%";
+   el.style.top=t.y*100+"%";
+ });
+ const end=e=>{
+   if(!down)return;
+   down=false;
+   if(moving){
+     e.preventDefault();
+     el.classList.remove("moving");
+     save();
+   }
+   moving=false;
+ };
+ el.addEventListener("pointerup",end);
+ el.addEventListener("pointercancel",end);
 }
 function pickImage(){document.getElementById("file").click()}
 function addImage(ev){let f=ev.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{let im={src:r.result,x:.1,y:.15,w:.55};books[bi].pages[pi].images.push(im);save();loadPage()};r.readAsDataURL(f);ev.target.value=""}
-function makeDrag(el,im){let sx,sy,ox,oy;el.addEventListener("pointerdown",e=>{e.stopPropagation();sx=e.clientX;sy=e.clientY;ox=im.x;oy=im.y;el.setPointerCapture(e.pointerId)});el.addEventListener("pointermove",e=>{if(sx==null)return;let r=document.getElementById("sheet").getBoundingClientRect();im.x=ox+(e.clientX-sx)/r.width;im.y=oy+(e.clientY-sy)/r.height;el.style.left=im.x*100+"%";el.style.top=im.y*100+"%"});el.addEventListener("pointerup",()=>{sx=null;save()})}
-function undo(){let s=books[bi].pages[pi];if(s.strokes.length){future.push(s.strokes.pop());loadPage();save()}}
-function redo(){let s=books[bi].pages[pi];if(future.length){s.strokes.push(future.pop());loadPage();save()}}
+function createImageElement(im,index,sheet){
+ let wrap=document.createElement("div");wrap.className="picwrap";
+ wrap.style.left=im.x*100+"%";wrap.style.top=im.y*100+"%";wrap.style.width=im.w*100+"%";
+ let img=document.createElement("img");img.className="pic";img.src=im.src;wrap.appendChild(img);sheet.appendChild(wrap);
+ const show=()=>{document.querySelectorAll(".picwrap.active").forEach(x=>x.classList.remove("active"));wrap.classList.add("active")};
+ const hide=()=>wrap.classList.remove("active");
+ wrap.addEventListener("pointerdown",e=>{e.stopPropagation();show();});
+ img.addEventListener("dblclick",e=>{e.stopPropagation();show();});
+ let del=document.createElement("button");del.className="delete-img";del.textContent="×";del.title="画像を削除";del.addEventListener("pointerdown",e=>e.stopPropagation());del.addEventListener("click",e=>{e.stopPropagation();if(confirm("この画像を削除しますか？")){books[bi].pages[pi].images.splice(index,1);save();loadPage()}});wrap.appendChild(del);
+ ["nw","ne","sw","se"].forEach(dir=>{
+   let h=document.createElement("div");h.className="resize-handle "+dir;wrap.appendChild(h);
+   h.addEventListener("pointerdown",e=>{
+     e.preventDefault();e.stopPropagation();show();
+     let sx=e.clientX, sy=e.clientY, startW=im.w, startH=im.h || wrap.offsetHeight/sheet.clientHeight, startX=im.x, startY=im.y;
+     let ratio=img.naturalWidth&&img.naturalHeight?(img.naturalHeight/img.naturalWidth)*(sheet.clientWidth/sheet.clientHeight):startH/startW;
+     h.setPointerCapture?.(e.pointerId);
+     const move=ev=>{
+       let r=sheet.getBoundingClientRect(), dx=(ev.clientX-sx)/r.width, dy=(ev.clientY-sy)/r.height;
+       let dw=dir.includes("e")?dx:-dx;
+       let newW=Math.max(.08,startW+dw);
+       let newH=newW*ratio;
+       if(dir.includes("w")) im.x=Math.max(0,startX+(startW-newW)); else im.x=startX;
+       if(dir.includes("n")) im.y=Math.max(0,startY+(startH-newH)); else im.y=startY;
+       im.w=Math.min(.9,newW);im.h=newH;
+       wrap.style.left=im.x*100+"%";wrap.style.top=im.y*100+"%";wrap.style.width=im.w*100+"%";wrap.style.height=im.h*100+"%";
+     };
+     const end=()=>{h.releasePointerCapture?.(e.pointerId);save();};
+     h.addEventListener("pointermove",move);h.addEventListener("pointerup",end,{once:true});h.addEventListener("pointercancel",end,{once:true});
+   });
+ });
+ let sx,sy,ox,oy,moving=false;
+ wrap.addEventListener("pointerdown",e=>{if(e.target!==img)return;show();sx=e.clientX;sy=e.clientY;ox=im.x;oy=im.y;moving=false;wrap.setPointerCapture?.(e.pointerId)});
+ wrap.addEventListener("pointermove",e=>{if(sx==null)return;let dx=e.clientX-sx,dy=e.clientY-sy;if(Math.hypot(dx,dy)<4&&!moving)return;moving=true;e.preventDefault();let r=sheet.getBoundingClientRect();im.x=Math.max(0,Math.min(.9,ox+dx/r.width));im.y=Math.max(0,Math.min(.95,oy+dy/r.height));wrap.style.left=im.x*100+"%";wrap.style.top=im.y*100+"%"});
+ wrap.addEventListener("pointerup",e=>{if(sx!=null){sx=null;save()}});wrap.addEventListener("pointercancel",()=>{sx=null});
+ img.addEventListener("load",()=>{let ratio=img.naturalHeight/img.naturalWidth;if(!im.h)im.h=im.w*ratio*(sheet.clientWidth/sheet.clientHeight);wrap.style.height=im.h*100+"%";});
+}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 renderBooks();addEventListener("resize",()=>{if(document.getElementById("note").style.display==="block")loadPage()});
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js");
